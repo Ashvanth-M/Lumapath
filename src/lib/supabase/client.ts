@@ -1,0 +1,25 @@
+/**
+ * Browser-side Supabase client.
+ *
+ * Uses only the publishable anon key (VITE_SUPABASE_ANON_KEY) which is safe
+ * to expose in the browser bundle. All data access is governed by RLS policies.
+ */
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "./types";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    "Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local",
+  );
+}
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});

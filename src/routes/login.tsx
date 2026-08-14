@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { APP_TAGLINE } from "@/constants";
-import { useAppStore } from "@/store/useAppStore";
+import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -40,33 +40,45 @@ const schema = z.object({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { login, loginWithGoogle, parent, child } = useAppStore();
-  const returning = Boolean(parent && child);
+  const { signIn, signInWithGoogle, profile, children: kids } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { email: parent?.email ?? "amara.okafor@example.com", password: "lumapath2026" },
+    defaultValues: { email: "", password: "" },
   });
 
   async function onSubmit(values: z.infer<typeof schema>) {
     setPending(true);
-    await new Promise((r) => setTimeout(r, 500));
-    login(values.email);
-    if (returning) {
-      toast.success(`Welcome back, ${parent!.fullName.split(" ")[0]}`);
-      navigate({ to: "/dashboard" });
+    const { error } = await signIn(values.email, values.password);
+    setPending(false);
+
+    if (error) {
+      toast.error(error);
       return;
     }
-    toast.success("Let's set up your profile");
-    navigate({ to: "/onboarding/parent" });
+
+    // Wait a moment for auth state to propagate and profile to load
+    await new Promise((r) => setTimeout(r, 300));
+
+    // Navigate based on profile completeness
+    if (profile && kids.length > 0) {
+      toast.success(`Welcome back, ${profile.full_name.split(" ")[0]}`);
+      navigate({ to: "/dashboard" });
+    } else if (profile && profile.full_name) {
+      toast.success("Let's add your child's profile");
+      navigate({ to: "/onboarding/child" });
+    } else {
+      toast.success("Let's set up your profile");
+      navigate({ to: "/onboarding/parent" });
+    }
   }
 
-  function google() {
-    loginWithGoogle();
-    toast.success("Signed in with Google");
-    navigate({ to: "/dashboard" });
+  async function handleGoogle() {
+    const { error } = await signInWithGoogle();
+    if (error) toast.error(error);
+    // Supabase OAuth redirects — navigation handled by redirect URL
   }
 
   return (
@@ -102,13 +114,9 @@ function LoginPage() {
           className="relative w-full max-w-sm"
         >
           <Logo className="mb-8 lg:hidden" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {returning ? `Welcome back, ${parent!.fullName.split(" ")[0]}` : "Sign in"}
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            {returning
-              ? `Sign in to continue ${child!.name}'s developmental journey — no setup needed.`
-              : "Continue your child's developmental journey."}
+            Continue your child's developmental journey.
           </p>
 
           <Card className="mt-7 rounded-3xl border-white/50 bg-card/70 p-6 shadow-lift ring-1 ring-primary/10 backdrop-blur-xl">
@@ -176,11 +184,27 @@ function LoginPage() {
               <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
             </div>
 
-            <Button variant="outline" className="w-full rounded-xl" onClick={google}>
+            <Button variant="outline" className="w-full rounded-xl" onClick={handleGoogle}>
               <GoogleIcon />
               Continue with Google
             </Button>
           </Card>
+
+          {import.meta.env.DEV && (
+            <div className="mt-4 rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-3 text-center">
+              <p className="text-xs text-amber-600">Dev mode — Demo credentials</p>
+              <button
+                type="button"
+                className="mt-1 text-xs font-medium text-amber-700 underline"
+                onClick={() => {
+                  form.setValue("email", "demo@lumapath.ai");
+                  form.setValue("password", "LumaPathDemo@2026!");
+                }}
+              >
+                Fill demo account
+              </button>
+            </div>
+          )}
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
             New to LumaPath?{" "}

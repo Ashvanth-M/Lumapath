@@ -14,7 +14,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppStore } from "@/store/useAppStore";
+import { useAuth } from "@/hooks/useAuth";
+import { upsertProfile } from "@/services/supabase/profile.service";
+import { supabase } from "@/lib/supabase/client";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/onboarding/parent")({
   head: () => ({
@@ -31,6 +35,7 @@ export const Route = createFileRoute("/onboarding/parent")({
 const schema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name").max(80),
   email: z.string().trim().email("Enter a valid email").max(255),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
   phone: z.string().trim().max(24).optional(),
   relationship: z.enum(["mother", "father", "guardian", "caregiver"]),
   country: z.string().trim().min(2, "Enter your country").max(60),
@@ -38,32 +43,73 @@ const schema = z.object({
 
 function ParentOnboarding() {
   const navigate = useNavigate();
-  const { parent, child, saveParent } = useAppStore();
-  const returning = Boolean(parent && child);
+  const { user, profile, children: kids, refreshProfile } = useAuth();
+  const isExisting = Boolean(user && profile?.full_name);
+  const [pending, setPending] = useState(false);
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fullName: parent?.fullName ?? "",
-      email: parent?.email ?? "",
-      phone: parent?.phone ?? "",
-      relationship: parent?.relationship ?? "mother",
-      country: parent?.country ?? "",
+      fullName: profile?.full_name ?? "",
+      email: user?.email ?? profile?.email ?? "",
+      password: "",
+      phone: profile?.phone ?? "",
+      relationship: (profile?.relationship as "mother" | "father" | "guardian" | "caregiver") ?? "mother",
+      country: profile?.country ?? "",
     },
   });
 
-  function onSubmit(values: z.infer<typeof schema>) {
-    saveParent({ id: parent?.id ?? "p_1", ...values });
-    toast.success("Parent profile saved");
-    navigate({ to: "/onboarding/child" });
+  async function onSubmit(values: z.infer<typeof schema>) {
+    setPending(true);
+    try {
+      let userId = user?.id;
+
+      // If not authenticated yet, sign up first
+      if (!userId) {
+        const { data, error } = await supabase.auth.signUp({
+          email: values.email,
+          password: values.password,
+          options: { data: { full_name: values.fullName } },
+        });
+        if (error) {
+          toast.error(error.message);
+          setPending(false);
+          return;
+        }
+        userId = data.user?.id;
+        if (!userId) {
+          toast.error("Account created — check your email for confirmation.");
+          setPending(false);
+          return;
+        }
+      }
+
+      // Upsert the profile
+      await upsertProfile({
+        id: userId,
+        full_name: values.fullName,
+        email: values.email,
+        phone: values.phone ?? null,
+        relationship: values.relationship,
+        country: values.country,
+      });
+
+      await refreshProfile();
+      toast.success("Parent profile saved");
+      navigate({ to: "/onboarding/child" });
+    } catch (err) {
+      toast.error("Failed to save profile. Please try again.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
     <OnboardingLayout step={1} title="Create your parent profile" subtitle="This keeps reports correctly attributed and lets clinicians reach you.">
-      {returning && (
+      {isExisting && kids.length > 0 && (
         <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Your profile for {child!.name} is already set up — nothing to fill in again.
+            Your profile is already set up — nothing to fill in again.
           </p>
           <Button
             type="button"
@@ -83,7 +129,7 @@ function ParentOnboarding() {
               <FormItem>
                 <FormLabel>Full name</FormLabel>
                 <FormControl>
-                  <Input placeholder="Amara Okafor" {...field} />
+                  <Input placeholder="Your full name" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -97,12 +143,27 @@ function ParentOnboarding() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input type="email" placeholder="you@example.com" {...field} />
+                    <Input type="email" placeholder="you@example.com" disabled={!!user} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+            {!user && (
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="At least 8 characters" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={form.control}
               name="phone"
@@ -155,8 +216,9 @@ function ParentOnboarding() {
               )}
             />
           </div>
-          <Button type="submit" className="w-full rounded-xl">
-            Continue
+          <Button type="submit" className="w-full rounded-xl" disabled={pending}>
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {user ? "Continue" : "Create account"}
           </Button>
         </form>
       </Form>

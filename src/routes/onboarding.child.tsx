@@ -3,15 +3,17 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
 import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAppStore } from "@/store/useAppStore";
-import { DEMO_CHILD } from "@/services/mockData";
-import { ageBandForBirthDate } from "@/utils/age";
+import { useAuth } from "@/hooks/useAuth";
+import { createChild } from "@/services/supabase/profile.service";
+import { ageBandForBirthDate, formatAge } from "@/utils/age";
 
 export const Route = createFileRoute("/onboarding/child")({
   head: () => ({
@@ -34,28 +36,54 @@ const schema = z.object({
 
 function ChildOnboarding() {
   const navigate = useNavigate();
-  const { child, saveChild } = useAppStore();
+  const { user, refreshChildren } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [birthDate, setBirthDate] = useState("");
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: child?.name ?? "",
-      birthDate: child?.birthDate ?? "",
-      gender: child?.gender ?? "female",
-      medicalNotes: child?.medicalNotes ?? "",
+      name: "",
+      birthDate: "",
+      gender: "other",
+      medicalNotes: "",
     },
   });
 
-  function onSubmit(values: z.infer<typeof schema>) {
-    saveChild({
-      id: child?.id ?? "c_1",
-      ...values,
-      ageBandId: ageBandForBirthDate(values.birthDate),
-      developmentHistory: child?.developmentHistory ?? DEMO_CHILD.developmentHistory,
-      communicationHistory: child?.communicationHistory ?? DEMO_CHILD.communicationHistory,
-    });
-    toast.success("Child profile created");
-    navigate({ to: "/dashboard" });
+  const watchedBirthDate = form.watch("birthDate");
+  const computedAgeBand = watchedBirthDate ? ageBandForBirthDate(watchedBirthDate) : null;
+  const computedAge = watchedBirthDate ? formatAge(watchedBirthDate) : null;
+
+  async function onSubmit(values: z.infer<typeof schema>) {
+    if (!user) {
+      toast.error("Please sign in first");
+      navigate({ to: "/login" });
+      return;
+    }
+
+    setPending(true);
+    try {
+      const child = await createChild({
+        parent_id: user.id,
+        name: values.name,
+        birth_date: values.birthDate,
+        gender: values.gender,
+        medical_notes: values.medicalNotes ?? null,
+      });
+
+      if (!child) {
+        toast.error("Failed to create child profile.");
+        return;
+      }
+
+      await refreshChildren();
+      toast.success("Child profile created");
+      navigate({ to: "/dashboard" });
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -73,7 +101,7 @@ function ChildOnboarding() {
               <FormItem>
                 <FormLabel>Child's name</FormLabel>
                 <FormControl>
-                  <Input placeholder="Zuri Okafor" {...field} />
+                  <Input placeholder="Your child's name" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -89,6 +117,11 @@ function ChildOnboarding() {
                   <FormControl>
                     <Input type="date" max={new Date().toISOString().slice(0, 10)} {...field} />
                   </FormControl>
+                  {computedAge && computedAgeBand && (
+                    <FormDescription>
+                      {computedAge} old — <span className="font-medium text-primary">{formatAgeBandLabel(computedAgeBand)}</span> screening set
+                    </FormDescription>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -136,11 +169,24 @@ function ChildOnboarding() {
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full rounded-xl">
+          <Button type="submit" className="w-full rounded-xl" disabled={pending}>
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             Go to dashboard
           </Button>
         </form>
       </Form>
     </OnboardingLayout>
   );
+}
+
+function formatAgeBandLabel(band: string): string {
+  const labels: Record<string, string> = {
+    "0-6m": "0–6 Months",
+    "6-12m": "6–12 Months",
+    "1-2y": "1–2 Years",
+    "2-3y": "2–3 Years",
+    "3-4y": "3–4 Years",
+    "4-6y": "4–6 Years",
+  };
+  return labels[band] ?? band;
 }
