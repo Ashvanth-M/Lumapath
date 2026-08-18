@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ArrowRight, CircleDot, Info, Video } from "lucide-react";
+import { ArrowRight, CircleDot, Info, Upload, Video } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,12 +78,19 @@ function ScreeningPage() {
                 ))}
               </div>
 
-              <Button asChild className="mt-5 w-full rounded-xl">
-                <Link to="/screening/$activityId/upload" params={{ activityId: a.id }}>
-                  <Video className="h-4 w-4" /> Upload video for this activity
-                  <ArrowRight className="ml-auto h-4 w-4" />
-                </Link>
-              </Button>
+              <div className="mt-5 grid gap-2">
+                <Button asChild className="w-full rounded-xl">
+                  <Link to="/screening/$activityId/record" params={{ activityId: a.id }}>
+                    <Video className="h-4 w-4" /> Record now
+                    <ArrowRight className="ml-auto h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="w-full rounded-xl">
+                  <Link to="/screening/$activityId/upload" params={{ activityId: a.id }}>
+                    <Upload className="h-4 w-4" /> Upload a recorded video
+                  </Link>
+                </Button>
+              </div>
             </Card>
           </motion.div>
         ))}

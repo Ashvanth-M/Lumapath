@@ -13,6 +13,7 @@
  */
 import { supabase } from "@/lib/supabase/client";
 import { isBackendConfigured, saveResult as saveViaBackend } from "@/services/backend/client";
+import { notifyResultReady, reconcileMilestones } from "@/services/milestones.service";
 import type { Json } from "@/lib/supabase/types";
 import type { AssessmentResult } from "@/types";
 
@@ -25,6 +26,32 @@ export interface PersistOutcome {
 }
 
 export async function persistResult(
+  result: AssessmentResult,
+  activityId?: string,
+  followUp?: { profileId: string; childName: string; birthDate: string; previous?: AssessmentResult },
+): Promise<PersistOutcome> {
+  const outcome = await write(result, activityId);
+
+  // Notifications and milestone updates are a courtesy layer — they must never
+  // turn a successful save into a reported failure.
+  if (outcome.persisted && followUp) {
+    try {
+      await notifyResultReady(
+        followUp.profileId,
+        followUp.childName,
+        result,
+        followUp.previous,
+      );
+      await reconcileMilestones(result.childId, followUp.birthDate, result);
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  return outcome;
+}
+
+async function write(
   result: AssessmentResult,
   activityId?: string,
 ): Promise<PersistOutcome> {

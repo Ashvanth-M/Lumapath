@@ -480,6 +480,27 @@ interface DatabaseSchema {
           read?: boolean;
         };
       };
+      /** Grants a clinician read access to one child. See 002_rls.sql. */
+      shared_access: {
+        Row: {
+          id: string;
+          child_id: string;
+          clinician_id: string;
+          granted_at: string;
+          /** Set rather than deleting the row, so the grant leaves a record. */
+          revoked_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          child_id: string;
+          clinician_id: string;
+          granted_at?: string;
+          revoked_at?: string | null;
+        };
+        Update: {
+          revoked_at?: string | null;
+        };
+      };
     };
   };
 }

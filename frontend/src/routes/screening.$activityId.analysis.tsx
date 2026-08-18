@@ -13,8 +13,11 @@ import {
   buildResultFromAnalysis,
   sampleFrames,
 } from "@/services/ai/behaviourAnalysis.service";
+import { analyseAudioTrack } from "@/services/ai/audioAnalysis.service";
+import { assessQuality, type QualityVerdict } from "@/services/ai/qualityGate.service";
 import { useAppStore } from "@/store/useAppStore";
 import { useActiveChild } from "@/hooks/useActiveChild";
+import { useAuth } from "@/hooks/useAuth";
 import { persistResult } from "@/services/resultPersistence.service";
 import { ageInMonths } from "@/utils/age";
 
@@ -42,11 +45,16 @@ function AnalysisPage() {
   const activity = getStandardActivity(activityId);
   const navigate = useNavigate();
   const { child } = useActiveChild();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const saveResult = useAppStore((s) => s.saveResult);
+  // Most recent stored result, used to describe change in the notification.
+  const previousResult = useAppStore((s) => s.savedResults[0]);
   const [ratio, setRatio] = useState(0);
   const [frames, setFrames] = useState(0);
   const [fps, setFps] = useState(0);
   const [failed, setFailed] = useState<string | null>(null);
+  const [rejection, setRejection] = useState<QualityVerdict | null>(null);
   const started = useRef(false);
 
   useEffect(() => {
@@ -99,14 +107,33 @@ function AnalysisPage() {
             "This video could not be decoded in your browser. Try an MP4 (H.264) or WebM re-export.",
           );
         }
-        const analysis = analyzeBehaviour(activityId, session.probe, frames);
+        // Refuse to score a recording that cannot support a conclusion. A bad
+        // number with low confidence is worse than an honest "record again".
+        const verdict = assessQuality(session.probe, frames);
+        if (!verdict.scorable) {
+          setRejection(verdict);
+          return;
+        }
+
+        // Decode and analyse the audio track. Never fatal — a video without
+        // usable audio still produces visual scores, just with vocal measures
+        // marked unavailable rather than invented.
+        const audio = await analyseAudioTrack(session.file);
+        if (cancelled) return;
+
+        const analysis = analyzeBehaviour(activityId, session.probe, frames, audio);
         await step(setRatio, 0.8, 0.94, 260);
         const result = buildResultFromAnalysis(analysis, child.ageBandId, child.id);
         saveResult(result);
         attachVideoToResult(result.id);
 
         // Saved locally first so a network failure cannot lose the session.
-        const outcome = await persistResult(result, activityId);
+        const outcome = await persistResult(result, activityId, {
+          profileId: userId,
+          childName: child.name,
+          birthDate: child.birthDate,
+          previous: previousResult,
+        });
         if (!outcome.persisted) {
           toast.warning(
             "Saved on this device only — it will not appear on your other devices.",
@@ -149,6 +176,68 @@ function AnalysisPage() {
     "Calculating response latency…",
   ];
   const caption = LOCK_CAPTIONS[Math.min(LOCK_CAPTIONS.length - 1, Math.floor(ratio * LOCK_CAPTIONS.length))];
+
+  if (rejection) {
+    return (
+      <div className="relative min-h-screen bg-[oklch(0.19_0.04_255)] text-white">
+        <div className="relative mx-auto max-w-2xl px-4 py-16 sm:px-6">
+          <Logo className="[&_span]:text-white" />
+          <div className="mt-10 rounded-3xl bg-white/10 p-8">
+            <ShieldCheck className="h-8 w-8 text-white/80" />
+            <h1 className="mt-5 text-2xl font-semibold tracking-tight">
+              This recording can&apos;t be scored
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-white/80">
+              Scoring it anyway would produce a number that says more about the recording than
+              about your child. Here&apos;s what got in the way:
+            </p>
+
+            <ul className="mt-5 space-y-2 text-sm text-white/85">
+              {rejection.reasons.map((r) => (
+                <li key={r} className="flex gap-2.5">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white/60" />
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-white/70">
+              How to fix it
+            </p>
+            <ul className="mt-2.5 space-y-2 text-sm text-white/85">
+              {rejection.fixes.map((f) => (
+                <li key={f} className="flex gap-2.5">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-white/60" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                className="rounded-xl"
+                onClick={() =>
+                  navigate({ to: "/screening/$activityId/record", params: { activityId } })
+                }
+              >
+                Record again
+              </Button>
+              <Button
+                variant="ghost"
+                className="rounded-xl text-white hover:bg-white/15 hover:text-white"
+                onClick={() =>
+                  navigate({ to: "/screening/$activityId/upload", params: { activityId } })
+                }
+              >
+                Upload a different video
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[oklch(0.19_0.04_255)] text-white">

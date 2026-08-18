@@ -37,7 +37,14 @@ export const MATRIX_RULES: MatrixRule[] = [
     id: "L2",
     level: 2,
     label: "Intentional behaviour",
-    test: (s) => s.eyeContactPct < 25 && s.vocalisations < 4,
+    // Requires *some* signal. Without this clause L2 also fires on a recording
+    // where nothing at all was observed, and because the engine takes the
+    // highest firing level, a completely unresponsive session was being
+    // reported as "behaviour is goal-directed" — the opposite of the finding.
+    test: (s) =>
+      s.eyeContactPct < 25 &&
+      s.vocalisations < 4 &&
+      (s.vocalisations >= 2 || s.gestureCount > 0 || s.eyeContactPct >= 12),
     rationale: "Behaviour is goal-directed but not yet directed to a partner.",
   },
   {

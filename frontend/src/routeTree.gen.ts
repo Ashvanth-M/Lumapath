@@ -35,6 +35,7 @@ import { Route as AssessmentBandIdProcessingRouteImport } from './routes/assessm
 import { Route as AssessmentBandIdRecordRouteImport } from './routes/assessment.$bandId.record'
 import { Route as AssessmentBandIdUploadRouteImport } from './routes/assessment.$bandId.upload'
 import { Route as ScreeningActivityIdAnalysisRouteImport } from './routes/screening.$activityId.analysis'
+import { Route as ScreeningActivityIdRecordRouteImport } from './routes/screening.$activityId.record'
 import { Route as ScreeningActivityIdSubjectRouteImport } from './routes/screening.$activityId.subject'
 import { Route as ScreeningActivityIdUploadRouteImport } from './routes/screening.$activityId.upload'
 
@@ -170,6 +171,12 @@ const ScreeningActivityIdAnalysisRoute =
     path: '/screening/$activityId/analysis',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ScreeningActivityIdRecordRoute =
+  ScreeningActivityIdRecordRouteImport.update({
+    id: '/screening/$activityId/record',
+    path: '/screening/$activityId/record',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ScreeningActivityIdSubjectRoute =
   ScreeningActivityIdSubjectRouteImport.update({
     id: '/screening/$activityId/subject',
@@ -210,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/assessment/$bandId/record': typeof AssessmentBandIdRecordRoute
   '/assessment/$bandId/upload': typeof AssessmentBandIdUploadRoute
   '/screening/$activityId/analysis': typeof ScreeningActivityIdAnalysisRoute
+  '/screening/$activityId/record': typeof ScreeningActivityIdRecordRoute
   '/screening/$activityId/subject': typeof ScreeningActivityIdSubjectRoute
   '/screening/$activityId/upload': typeof ScreeningActivityIdUploadRoute
 }
@@ -240,6 +248,7 @@ export interface FileRoutesByTo {
   '/assessment/$bandId/record': typeof AssessmentBandIdRecordRoute
   '/assessment/$bandId/upload': typeof AssessmentBandIdUploadRoute
   '/screening/$activityId/analysis': typeof ScreeningActivityIdAnalysisRoute
+  '/screening/$activityId/record': typeof ScreeningActivityIdRecordRoute
   '/screening/$activityId/subject': typeof ScreeningActivityIdSubjectRoute
   '/screening/$activityId/upload': typeof ScreeningActivityIdUploadRoute
 }
@@ -271,6 +280,7 @@ export interface FileRoutesById {
   '/assessment/$bandId/record': typeof AssessmentBandIdRecordRoute
   '/assessment/$bandId/upload': typeof AssessmentBandIdUploadRoute
   '/screening/$activityId/analysis': typeof ScreeningActivityIdAnalysisRoute
+  '/screening/$activityId/record': typeof ScreeningActivityIdRecordRoute
   '/screening/$activityId/subject': typeof ScreeningActivityIdSubjectRoute
   '/screening/$activityId/upload': typeof ScreeningActivityIdUploadRoute
 }
@@ -303,6 +313,7 @@ export interface FileRouteTypes {
     | '/assessment/$bandId/record'
     | '/assessment/$bandId/upload'
     | '/screening/$activityId/analysis'
+    | '/screening/$activityId/record'
     | '/screening/$activityId/subject'
     | '/screening/$activityId/upload'
   fileRoutesByTo: FileRoutesByTo
@@ -333,6 +344,7 @@ export interface FileRouteTypes {
     | '/assessment/$bandId/record'
     | '/assessment/$bandId/upload'
     | '/screening/$activityId/analysis'
+    | '/screening/$activityId/record'
     | '/screening/$activityId/subject'
     | '/screening/$activityId/upload'
   id:
@@ -363,6 +375,7 @@ export interface FileRouteTypes {
     | '/assessment/$bandId/record'
     | '/assessment/$bandId/upload'
     | '/screening/$activityId/analysis'
+    | '/screening/$activityId/record'
     | '/screening/$activityId/subject'
     | '/screening/$activityId/upload'
   fileRoutesById: FileRoutesById
@@ -394,6 +407,7 @@ export interface RootRouteChildren {
   AssessmentBandIdRecordRoute: typeof AssessmentBandIdRecordRoute
   AssessmentBandIdUploadRoute: typeof AssessmentBandIdUploadRoute
   ScreeningActivityIdAnalysisRoute: typeof ScreeningActivityIdAnalysisRoute
+  ScreeningActivityIdRecordRoute: typeof ScreeningActivityIdRecordRoute
   ScreeningActivityIdSubjectRoute: typeof ScreeningActivityIdSubjectRoute
   ScreeningActivityIdUploadRoute: typeof ScreeningActivityIdUploadRoute
 }
@@ -582,6 +596,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ScreeningActivityIdAnalysisRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/screening/$activityId/record': {
+      id: '/screening/$activityId/record'
+      path: '/screening/$activityId/record'
+      fullPath: '/screening/$activityId/record'
+      preLoaderRoute: typeof ScreeningActivityIdRecordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/screening/$activityId/subject': {
       id: '/screening/$activityId/subject'
       path: '/screening/$activityId/subject'
@@ -626,6 +647,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentBandIdRecordRoute: AssessmentBandIdRecordRoute,
   AssessmentBandIdUploadRoute: AssessmentBandIdUploadRoute,
   ScreeningActivityIdAnalysisRoute: ScreeningActivityIdAnalysisRoute,
+  ScreeningActivityIdRecordRoute: ScreeningActivityIdRecordRoute,
   ScreeningActivityIdSubjectRoute: ScreeningActivityIdSubjectRoute,
   ScreeningActivityIdUploadRoute: ScreeningActivityIdUploadRoute,
 }

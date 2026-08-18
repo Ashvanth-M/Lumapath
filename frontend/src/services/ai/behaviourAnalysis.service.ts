@@ -1,6 +1,12 @@
 import { COMMUNICATION_MATRIX_LEVELS as MATRIX_LEVELS } from "@/constants";
 import { getStandardActivity } from "@/constants/screening";
 import {
+  EMPTY_AUDIO_ANALYSIS,
+  measureResponseLatency,
+  type AudioAnalysis,
+} from "@/services/ai/audioAnalysis.service";
+import { describeNormalisation, normaliseScores } from "@/services/ai/ageNormalisation.service";
+import {
   appearanceDistance,
   appearanceOf,
   boxDistance as regionDistance,
@@ -483,6 +489,7 @@ export function analyzeBehaviour(
   activityId: string,
   probe: VideoProbe,
   frames: FrameStat[],
+  audio: AudioAnalysis = EMPTY_AUDIO_ANALYSIS,
 ): BehaviourAnalysis {
   const activity = getStandardActivity(activityId);
   const avg = (fn: (f: FrameStat) => number) =>
@@ -503,10 +510,22 @@ export function analyzeBehaviour(
 
   const eyeContactSec = gazeWindows.totalFrames * perFrameSec;
   const attentionSec = stillEpisodes.totalFrames * perFrameSec;
-  const vocalEvents = probe.hasAudio ? Math.max(1, Math.round(motionBursts.count * 1.4)) : 0;
   const gestureEvents = motionBursts.count;
-  const firstResponse = frames.find((f) => f.motion > motion + 0.03);
-  const latencyMs = Math.round(((firstResponse?.t ?? perFrameSec * 2) % 4 + 0.4) * 1000);
+
+  // Measured from the decoded audio track. Both speakers — see the note in
+  // audioAnalysis.service.ts. Previously this was motionBursts × 1.4, which
+  // meant the speech score was really measuring movement.
+  const vocalEvents = audio.available ? audio.voiceEvents : 0;
+
+  // Cross-modal latency: a voice segment ends, then movement rises. Falls back
+  // to null rather than a plausible-looking default when unmeasurable.
+  const latency = audio.available
+    ? measureResponseLatency(
+        audio.segments,
+        frames.map((f) => ({ t: f.t, motion: f.motion })),
+      )
+    : null;
+  const latencyMs = latency?.meanMs ?? 0;
 
   const groups: BehaviourGroup[] = [
     {
@@ -541,11 +560,29 @@ export function analyzeBehaviour(
     {
       key: "vocal",
       title: "Vocal Behaviour",
-      metrics: probe.hasAudio
+      metrics: audio.available
         ? [
             { label: "Voice-activity segments", value: `${vocalEvents}`, pct: clamp(vocalEvents * 11) },
-            { label: "Vocalisation rate", value: `${(vocalEvents / Math.max(1, probe.durationSec / 60)).toFixed(1)} / min`, pct: clamp(vocalEvents * 9) },
-            { label: "Audio track", value: "Present", pct: 100 },
+            {
+              label: "Voice rate",
+              value: `${audio.voiceRate.toFixed(1)} / min`,
+              pct: clamp(audio.voiceRate * 8),
+            },
+            {
+              label: "Time containing voice",
+              value: `${Math.round(audio.voiceRatio * 100)}%`,
+              pct: clamp(audio.voiceRatio * 180),
+            },
+            {
+              label: "Signal-to-noise",
+              value: `${audio.snrDb.toFixed(0)} dB`,
+              pct: clamp(audio.snrDb * 3.5),
+            },
+            {
+              label: "Speaker separation",
+              value: "Not available",
+              pct: 0,
+            },
           ]
         : [{ label: "Audio track", value: "Not detected", pct: 0 }],
     },
@@ -553,7 +590,11 @@ export function analyzeBehaviour(
       key: "timing",
       title: "Timing & Responsiveness",
       metrics: [
-        { label: "First-response latency", value: `${(latencyMs / 1000).toFixed(2)} s`, pct: clamp(140 - latencyMs / 20) },
+        {
+          label: "Response latency",
+          value: latency ? `${(latencyMs / 1000).toFixed(2)} s (${latency.trials} trials)` : "Not measurable",
+          pct: latency ? clamp(140 - latencyMs / 20) : 0,
+        },
         { label: "Sustained attention", value: `${attentionSec.toFixed(1)} s`, pct: clamp((attentionSec / Math.max(1, probe.durationSec)) * 150) },
         { label: "Analysed duration", value: `${probe.durationSec.toFixed(1)} s`, pct: clamp((probe.durationSec / activity.recommendedSeconds) * 100) },
       ],
@@ -646,7 +687,9 @@ export function buildResultFromAnalysis(
   const vocal = mean(pick("vocal"));
   const timing = mean(pick("timing"));
 
-  const scores: Record<ScoreKey, number> = {
+  // Raw measurement, before any age adjustment. The weights below are explicit
+  // editorial choices, not fitted values — documented in ageNormalisation.
+  const raw: Record<ScoreKey, number> = {
     eyeContact: clamp(social * 0.7 + face * 0.3, 5, 99),
     speech: clamp(vocal * 0.75 + timing * 0.25, 5, 99),
     gesture: clamp(object * 0.8 + face * 0.2, 5, 99),
@@ -654,8 +697,12 @@ export function buildResultFromAnalysis(
     facialExpression: clamp(face * 0.6 + social * 0.4, 5, 99),
     auditoryResponse: clamp(timing * 0.5 + vocal * 0.5, 5, 99),
   };
+
+  // The same raw measurement means different things at 9 months and 5 years.
+  const scores = normaliseScores(raw, ageBandId);
+
   const overall = clamp(
-    (Object.values(scores).reduce((a, b) => a + b, 0) / 6) * 0.9 + 8,
+    (Object.values(scores).reduce((a, b) => a + b, 0) / 6),
     5,
     99,
   );
@@ -666,8 +713,11 @@ export function buildResultFromAnalysis(
     Math.max(0, Math.floor((overall / 100) * MATRIX_LEVELS.length)),
   );
   const level = MATRIX_LEVELS[matrixIndex];
+
+  // Parsed back out of the formatted metric string. Reads "1.42 s (3 trials)"
+  // or "Not measurable" — the first number is the value, zero when absent.
   const latency = Number(
-    (pick("timing")[0]?.value ?? "1.2 s").replace(/[^0-9.]/g, "") || "1.2",
+    (pick("timing")[0]?.value ?? "").match(/[\d.]+/)?.[0] ?? "0",
   );
   const activity = getStandardActivity(analysis.activityId);
 
@@ -676,15 +726,18 @@ export function buildResultFromAnalysis(
     ...pick("social").slice(0, 2).map((m) => `${m.label}: ${m.value}.`),
     ...pick("object").slice(0, 1).map((m) => `${m.label}: ${m.value}.`),
     `Recorded activity: ${activity.title} — ${activity.purpose}`,
+    describeNormalisation(ageBandId),
   ];
 
   const riskFactors: string[] = [];
-  if (scores.speech < 60) riskFactors.push("Limited vocal activity detected relative to age expectation.");
+  if (scores.speech < 60) riskFactors.push("Voice activity below the expectation for this age band.");
   if (scores.eyeContact < 60) riskFactors.push("Few sustained mutual-gaze windows in this recording.");
   if (scores.gesture < 60) riskFactors.push("Low frequency of reaching or pointing behaviours.");
   if (analysis.video.quality === "poor" || analysis.video.quality === "acceptable")
     riskFactors.push(`Video quality was ${analysis.video.quality}; measurements may under-represent behaviour.`);
   if (!analysis.video.hasAudio) riskFactors.push("No audio track, so vocal behaviour could not be measured.");
+  if (latency === 0)
+    riskFactors.push("Response latency could not be measured — no prompt-and-reaction pair was detected.");
   if (riskFactors.length === 0) riskFactors.push("No behavioural flags raised in this recording.");
 
   const confidence = Math.min(

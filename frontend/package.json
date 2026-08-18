@@ -9,6 +9,8 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -96,6 +98,7 @@
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "^3.0.5"
   }
 }

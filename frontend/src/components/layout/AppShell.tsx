@@ -18,6 +18,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Logo } from "@/components/brand/Logo";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -121,7 +122,7 @@ export function AppShell({
             {subtitle && <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>}
           </div>
         )}
-        {children}
+        <ErrorBoundary area={title ?? "This page"}>{children}</ErrorBoundary>
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 glass-panel border-b-0 border-x-0 pb-[env(safe-area-inset-bottom)] md:hidden">

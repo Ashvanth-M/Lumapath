@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { createChild } from "@/services/supabase/profile.service";
+import { seedMilestones } from "@/services/milestones.service";
 import { ageBandForBirthDate, formatAge } from "@/utils/age";
 
 export const Route = createFileRoute("/onboarding/child")({
@@ -75,6 +76,10 @@ function ChildOnboarding() {
         toast.error("Failed to create child profile.");
         return;
       }
+
+      // Build the milestone timeline so the progress page has content from day
+      // one. Best-effort — a failure here should not block onboarding.
+      await seedMilestones(child.id, values.birthDate).catch(() => 0);
 
       await refreshChildren();
       toast.success("Child profile created");
