@@ -1,14 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { Activity, Ear, Eye, Hand, MessageSquare, Sparkles } from "lucide-react";
+import { Activity, Ear, Eye, Hand, MessageSquare, Sparkles, Video } from "lucide-react";
 import { useState } from "react";
 import { LottiePulse } from "@/components/anim/LottiePulse";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { DEMO_CHILD } from "@/services/mockData";
-import { useAppStore } from "@/store/useAppStore";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChildGate } from "@/components/common/ChildGate";
+import { EmptyState } from "@/components/common/EmptyState";
+import { useActiveChild } from "@/hooks/useActiveChild";
+import { listAssessments } from "@/services/assessment.service";
+import { formatDate } from "@/utils/age";
+import type { ScoreKey } from "@/types";
 
 export const Route = createFileRoute("/lumatwin")({
   head: () => ({
@@ -26,23 +32,71 @@ export const Route = createFileRoute("/lumatwin")({
   component: LumaTwinPage,
 });
 
-const DOMAINS = [
-  { key: "eyeContact", label: "Eye contact & joint attention", value: 82, icon: Eye },
-  { key: "speech", label: "Speech & vocalisation", value: 68, icon: MessageSquare },
-  { key: "gesture", label: "Gesture & pointing", value: 84, icon: Hand },
-  { key: "auditory", label: "Auditory response", value: 74, icon: Ear },
-  { key: "attention", label: "Sustained attention", value: 76, icon: Activity },
-] as const;
+/** The five domains the twin visualises, mapped to their score keys. */
+const DOMAIN_META: Array<{ key: ScoreKey; label: string; icon: typeof Eye }> = [
+  { key: "eyeContact", label: "Eye contact & joint attention", icon: Eye },
+  { key: "speech", label: "Speech & vocalisation", icon: MessageSquare },
+  { key: "gesture", label: "Gesture & pointing", icon: Hand },
+  { key: "auditoryResponse", label: "Auditory response", icon: Ear },
+  { key: "attention", label: "Sustained attention", icon: Activity },
+];
 
 function LumaTwinPage() {
-  const child = useAppStore((s) => s.child) ?? DEMO_CHILD;
-  const [focus, setFocus] = useState<string>("gesture");
-  const active = DOMAINS.find((d) => d.key === focus) ?? DOMAINS[0];
+  const { child, loading } = useActiveChild();
+  const [focus, setFocus] = useState<ScoreKey>("gesture");
+  const { data: history, isLoading } = useQuery({
+    queryKey: ["assessments", child?.id],
+    queryFn: () => listAssessments(child?.id ?? ""),
+    enabled: !!child?.id,
+  });
+
+  if (!child) {
+    return (
+      <AppShell title="LumaTwin">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <AppShell title="LumaTwin">
+        <Skeleton className="h-96 rounded-3xl" />
+      </AppShell>
+    );
+  }
+
+  const latest = history?.[0];
+  if (!latest) {
+    return (
+      <AppShell title="LumaTwin">
+        <EmptyState
+          icon={Video}
+          title="The twin builds itself from screenings"
+          description={`${child.name}'s twin reflects measured domain scores across completed sessions. Complete the first screening to create it.`}
+          actionLabel="Start a screening"
+          actionTo="/screening"
+        />
+      </AppShell>
+    );
+  }
+
+  const previous = history?.[1];
+  const domains = DOMAIN_META.map((d) => ({
+    ...d,
+    value: latest.scores[d.key],
+    change: previous ? latest.scores[d.key] - previous.scores[d.key] : null,
+  }));
+  const active = domains.find((d) => d.key === focus) ?? domains[0];
+  const strongest = [...domains].sort((a, b) => b.value - a.value)[0];
+  const weakest = [...domains].sort((a, b) => a.value - b.value)[0];
 
   return (
     <AppShell
       title="LumaTwin"
-      subtitle={`A living digital twin of ${child.name}'s communication profile — recalculated after every session.`}
+      subtitle={`${child.name}'s communication profile from ${history?.length ?? 0} ${
+        (history?.length ?? 0) === 1 ? "session" : "sessions"
+      } · last updated ${formatDate(latest.completedAt)}`}
     >
       <div className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
         <Card className="relative gap-0 overflow-hidden rounded-3xl border-border/70 p-7 shadow-lift">
@@ -53,12 +107,12 @@ function LumaTwinPage() {
               animate={{ scale: [1, 1.04, 1] }}
               transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
             >
-              <span className="text-2xl font-semibold tabular-nums">77</span>
+              <span className="text-2xl font-semibold tabular-nums">{latest.overallScore}</span>
               <span className="text-[10px] uppercase tracking-wider text-white/80">Twin index</span>
             </motion.div>
 
-            {DOMAINS.map((d, i) => {
-              const angle = (i / DOMAINS.length) * Math.PI * 2 - Math.PI / 2;
+            {domains.map((d, i) => {
+              const angle = (i / domains.length) * Math.PI * 2 - Math.PI / 2;
               const r = 104;
               return (
                 <motion.button
@@ -96,18 +150,35 @@ function LumaTwinPage() {
           <Card className="gap-0 rounded-3xl border-border/70 p-6 shadow-soft">
             <h2 className="text-sm font-semibold tracking-tight">Twin domain map</h2>
             <ul className="mt-4 space-y-4">
-              {DOMAINS.map((d) => (
+              {domains.map((d) => (
                 <li key={d.key}>
                   <div className="mb-1.5 flex items-center justify-between text-sm">
                     <span className="inline-flex items-center gap-2 font-medium">
                       <d.icon className="h-3.5 w-3.5 text-primary" /> {d.label}
                     </span>
-                    <span className="tabular-nums text-muted-foreground">{d.value}</span>
+                    <span className="flex items-baseline gap-2">
+                      {d.change !== null && d.change !== 0 && (
+                        <span
+                          className={`text-xs tabular-nums ${
+                            d.change > 0 ? "text-success" : "text-destructive"
+                          }`}
+                        >
+                          {d.change > 0 ? "+" : ""}
+                          {d.change}
+                        </span>
+                      )}
+                      <span className="tabular-nums text-muted-foreground">{d.value}</span>
+                    </span>
                   </div>
                   <Progress value={d.value} className="h-1.5" />
                 </li>
               ))}
             </ul>
+            {!previous && (
+              <p className="mt-4 text-xs text-muted-foreground">
+                Change indicators appear once a second session is complete.
+              </p>
+            )}
           </Card>
 
           <Card className="gap-0 rounded-3xl border-primary/25 bg-gradient-surface p-6 shadow-soft">
@@ -115,9 +186,15 @@ function LumaTwinPage() {
               <Sparkles className="mr-1 h-3 w-3" /> Twin insight
             </Badge>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              {child.name}'s twin shows strong gesture and expressive intent with slower verbal turn-taking.
-              Repeating the naming and pointing activities three times a week is the highest-leverage change in
-              the current model.
+              {strongest.label.toLowerCase()} is {child.name}&apos;s clearest strength at{" "}
+              <strong className="text-foreground tabular-nums">{strongest.value}</strong>, while{" "}
+              {weakest.label.toLowerCase()} is the priority area at{" "}
+              <strong className="text-foreground tabular-nums">{weakest.value}</strong>. Communication
+              Matrix Level {latest.matrixLevel} — {latest.matrixLevelName}.
+            </p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Drawn from the {formatDate(latest.completedAt)} screening. Screening support only — not a
+              diagnosis.
             </p>
           </Card>
         </div>

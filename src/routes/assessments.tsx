@@ -5,8 +5,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ChildGate } from "@/components/common/ChildGate";
 import { AGE_BANDS } from "@/constants";
-import { DEMO_CHILD } from "@/services/mockData";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { useAppStore } from "@/store/useAppStore";
 
 export const Route = createFileRoute("/assessments")({
@@ -23,8 +24,16 @@ export const Route = createFileRoute("/assessments")({
 
 function AssessmentSelection() {
   const navigate = useNavigate();
-  const child = useAppStore((s) => s.child) ?? DEMO_CHILD;
+  const { child, loading } = useActiveChild();
   const startDraft = useAppStore((s) => s.startDraft);
+
+  if (!child) {
+    return (
+      <AppShell title="Choose an assessment">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell

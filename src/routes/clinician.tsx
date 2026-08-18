@@ -17,13 +17,16 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { getStandardActivity } from "@/constants/screening";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { useAppStore } from "@/store/useAppStore";
+import { formatDate } from "@/utils/age";
 import type { RiskLevel } from "@/types";
 
 export const Route = createFileRoute("/clinician")({
@@ -49,7 +52,8 @@ export const Route = createFileRoute("/clinician")({
 
 interface QueueCase {
   id: string;
-  mrn: string;
+  /** Short form of the result id — this app has no MRN system. */
+  ref: string;
   name: string;
   age: string;
   activityId: string;
@@ -59,62 +63,9 @@ interface QueueCase {
   latencyMs: number;
   shared: string;
   reviewed: boolean;
-  /** Population percentile for the child's age band. */
-  percentile: number;
   previousScore?: number;
   flags: string[];
 }
-
-const BASE_CASES: QueueCase[] = [
-  {
-    id: "r_003",
-    mrn: "LP-48192",
-    name: "Zuri O.",
-    age: "1y 8m",
-    activityId: "response-to-name",
-    score: 62,
-    risk: "monitor",
-    confidence: 0.86,
-    latencyMs: 1620,
-    shared: "2 days ago",
-    reviewed: false,
-    percentile: 34,
-    previousScore: 58,
-    flags: ["Delayed name response", "Low pointing frequency"],
-  },
-  {
-    id: "r_002",
-    mrn: "LP-40771",
-    name: "Malik A.",
-    age: "3y 2m",
-    activityId: "social-play",
-    score: 88,
-    risk: "low",
-    confidence: 0.92,
-    latencyMs: 940,
-    shared: "5 days ago",
-    reviewed: true,
-    percentile: 78,
-    previousScore: 84,
-    flags: ["Stable across sessions"],
-  },
-  {
-    id: "r_001",
-    mrn: "LP-39004",
-    name: "Ife B.",
-    age: "0y 9m",
-    activityId: "toy-presentation",
-    score: 48,
-    risk: "elevated",
-    confidence: 0.79,
-    latencyMs: 2280,
-    shared: "1 week ago",
-    reviewed: false,
-    percentile: 12,
-    previousScore: 55,
-    flags: ["Reduced joint attention", "Score declined vs prior", "Low video quality"],
-  },
-];
 
 const RISK_STYLE: Record<RiskLevel, string> = {
   low: "bg-success/15 text-success hover:bg-success/15",
@@ -136,44 +87,48 @@ function priorityScore(c: QueueCase) {
 
 function ClinicianPage() {
   const savedResults = useAppStore((s) => s.savedResults);
-  const child = useAppStore((s) => s.child);
+  const { child } = useActiveChild();
   const [filter, setFilter] = useState<"all" | RiskLevel>("all");
   const [query, setQuery] = useState("");
   const [reviewed, setReviewed] = useState<Record<string, boolean>>({});
   const [scheduled, setScheduled] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const cases = useMemo<QueueCase[]>(() => {
-    const mine = savedResults.slice(0, 6).map<QueueCase>((r, i) => ({
-      id: r.id,
-      mrn: `LP-${String(90000 + i)}`,
-      name: child?.name ?? "Your child",
-      age: r.ageBandId,
-      activityId: r.analysis?.activityId ?? "free-play",
-      score: r.overallScore,
-      risk: r.riskLevel,
-      confidence: r.confidence,
-      latencyMs: r.responseLatencyMs,
-      shared: "just now",
-      reviewed: false,
-      percentile: Math.max(3, Math.min(97, Math.round(r.overallScore * 0.9))),
-      previousScore: savedResults[i + 1]?.overallScore,
-      flags: r.riskFactors.slice(0, 3),
-    }));
-    return [...mine, ...BASE_CASES].sort(
-      (a, b) =>
-        priorityScore(b) - priorityScore(a) ||
-        RISK_ORDER[a.risk] - RISK_ORDER[b.risk] ||
-        a.score - b.score,
-    );
-  }, [savedResults, child?.name]);
+  // Only real results appear here. Cross-family sharing needs the shared_access
+  // table wired up — until then this shows the signed-in parent's own sessions.
+  const cases = useMemo<QueueCase[]>(
+    () =>
+      savedResults
+        .map<QueueCase>((r, i) => ({
+          id: r.id,
+          ref: r.id.slice(-6).toUpperCase(),
+          name: child?.name ?? "Your child",
+          age: r.ageBandId,
+          activityId: r.analysis?.activityId ?? "free-play",
+          score: r.overallScore,
+          risk: r.riskLevel,
+          confidence: r.confidence,
+          latencyMs: r.responseLatencyMs,
+          shared: formatDate(r.completedAt),
+          reviewed: false,
+          previousScore: savedResults[i + 1]?.overallScore,
+          flags: r.riskFactors.slice(0, 3),
+        }))
+        .sort(
+          (a, b) =>
+            priorityScore(b) - priorityScore(a) ||
+            RISK_ORDER[a.risk] - RISK_ORDER[b.risk] ||
+            a.score - b.score,
+        ),
+    [savedResults, child?.name],
+  );
 
   const isReviewed = (c: QueueCase) => reviewed[c.id] ?? c.reviewed;
   const q = query.trim().toLowerCase();
   const shown = cases.filter(
     (c) =>
       (filter === "all" || c.risk === filter) &&
-      (!q || c.name.toLowerCase().includes(q) || c.mrn.toLowerCase().includes(q)),
+      (!q || c.name.toLowerCase().includes(q) || c.ref.toLowerCase().includes(q)),
   );
   const selected = shown.find((c) => c.id === selectedId) ?? shown[0];
 
@@ -189,10 +144,27 @@ function ClinicianPage() {
     n: cases.filter((c) => c.risk === r).length,
   }));
 
+  if (cases.length === 0) {
+    return (
+      <AppShell
+        title="Clinician workstation"
+        subtitle="Prioritised worklist of screenings shared with you."
+      >
+        <EmptyState
+          icon={Stethoscope}
+          title="No screenings in the queue"
+          description="Cases appear here once screenings are completed. Parent-to-clinician sharing is not wired up yet, so this currently shows only sessions completed on this device."
+          actionLabel="Start a screening"
+          actionTo="/screening"
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
       title="Clinician workstation"
-      subtitle="AI-prioritised worklist of shared child screenings, with population comparison and reassessment planning."
+      subtitle="Prioritised worklist of screenings, ordered by risk, score change and measurement confidence."
     >
       {/* Hospital-system status bar */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-border/70 bg-secondary/50 px-4 py-2.5 font-mono text-[11px] text-muted-foreground">
@@ -272,11 +244,11 @@ function ClinicianPage() {
                         <span className="truncate">{c.name}</span>
                         <span className="font-normal text-muted-foreground">· {c.age}</span>
                         <span className="font-mono text-[11px] font-normal text-muted-foreground">
-                          {c.mrn}
+                          {c.ref}
                         </span>
                       </p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {getStandardActivity(c.activityId).title} · shared {c.shared}
+                        {getStandardActivity(c.activityId).title} · {c.shared}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -291,7 +263,14 @@ function ClinicianPage() {
 
                   <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                     <Metric label="Score" value={`${c.score}/100`} />
-                    <Metric label="Percentile" value={`${c.percentile}th`} />
+                    <Metric
+                      label="vs previous"
+                      value={
+                        c.previousScore == null
+                          ? "Baseline"
+                          : `${c.score - c.previousScore > 0 ? "+" : ""}${c.score - c.previousScore}`
+                      }
+                    />
                     <Metric label="Confidence" value={`${Math.round(c.confidence * 100)}%`} />
                     <Metric label="Latency" value={`${(c.latencyMs / 1000).toFixed(2)} s`} />
                   </div>
@@ -354,21 +333,12 @@ function ClinicianPage() {
             <Card className="gap-0 rounded-3xl border-border/70 p-6 shadow-soft">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-primary" />
-                <h2 className="text-base font-semibold tracking-tight">Population comparison</h2>
+                <h2 className="text-base font-semibold tracking-tight">Session comparison</h2>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {selected.name} · {selected.age} age band cohort
+                {selected.name} · {selected.age} age band
               </p>
               <div className="mt-4 space-y-4">
-                <div>
-                  <div className="flex items-baseline justify-between text-xs">
-                    <span className="text-muted-foreground">Cohort percentile</span>
-                    <span className="text-sm font-semibold tabular-nums">
-                      {selected.percentile}th
-                    </span>
-                  </div>
-                  <Progress value={selected.percentile} className="mt-1.5 h-1.5" />
-                </div>
                 <div>
                   <div className="flex items-baseline justify-between text-xs">
                     <span className="text-muted-foreground">This session</span>
@@ -452,7 +422,7 @@ function ClinicianPage() {
                 "Confirm the AI tracked the child, not the caregiver, in the replay overlay.",
                 "Watch the flagged timeline segments before reading the scores.",
                 "Check AI confidence and video quality before weighting any metric.",
-                "Compare against the previous session as well as the cohort percentile.",
+                "Compare against the child's previous session rather than an absolute threshold.",
                 "Record your own clinical impression — the AI output is an observation aid.",
               ].map((t, i) => (
                 <li key={t} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3">

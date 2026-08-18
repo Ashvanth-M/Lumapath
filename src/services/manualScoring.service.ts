@@ -17,7 +17,7 @@ const scoreFor = (v: AnswerValue) => ANSWER_OPTIONS.find((o) => o.value === v)!.
 export function scoreManualAssessment(
   bandId: AgeBandId,
   answers: Record<string, AnswerValue>,
-  childId = "c_1",
+  childId: string,
 ): AssessmentResult {
   const questions = MANUAL_QUESTIONS_BY_BAND[bandId];
   const buckets = new Map<ScoreKey, number[]>();

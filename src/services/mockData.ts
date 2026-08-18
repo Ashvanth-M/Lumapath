@@ -1,3 +1,11 @@
+/**
+ * Sample data for UI development. A fictional child, fictional scores.
+ *
+ * **Never import this from a route or component.** The only legitimate consumer
+ * is `assessment.service.ts`, behind the `VITE_DEMO_MODE=true` flag, so a
+ * developer can work on layout without a database. Anything that reaches this
+ * file by another path is showing invented clinical numbers to a real parent.
+ */
 import type {
   AppNotification,
   AssessmentResult,

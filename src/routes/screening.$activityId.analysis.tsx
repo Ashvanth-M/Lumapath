@@ -14,7 +14,8 @@ import {
   sampleFrames,
 } from "@/services/ai/behaviourAnalysis.service";
 import { useAppStore } from "@/store/useAppStore";
-import { DEMO_CHILD } from "@/services/mockData";
+import { useActiveChild } from "@/hooks/useActiveChild";
+import { persistResult } from "@/services/resultPersistence.service";
 import { ageInMonths } from "@/utils/age";
 
 export const Route = createFileRoute("/screening/$activityId/analysis")({
@@ -40,7 +41,7 @@ function AnalysisPage() {
   const { activityId } = Route.useParams();
   const activity = getStandardActivity(activityId);
   const navigate = useNavigate();
-  const child = useAppStore((s) => s.child) ?? DEMO_CHILD;
+  const { child } = useActiveChild();
   const saveResult = useAppStore((s) => s.saveResult);
   const [ratio, setRatio] = useState(0);
   const [frames, setFrames] = useState(0);
@@ -59,6 +60,9 @@ function AnalysisPage() {
       navigate({ to: "/screening/$activityId/subject", params: { activityId } });
       return;
     }
+    // Scoring needs the child's age band, so wait for the profile to load
+    // rather than analysing against a placeholder.
+    if (!child) return;
     if (started.current) return;
     started.current = true;
 
@@ -100,6 +104,16 @@ function AnalysisPage() {
         const result = buildResultFromAnalysis(analysis, child.ageBandId, child.id);
         saveResult(result);
         attachVideoToResult(result.id);
+
+        // Saved locally first so a network failure cannot lose the session.
+        const outcome = await persistResult(result, activityId);
+        if (!outcome.persisted) {
+          toast.warning(
+            "Saved on this device only — it will not appear on your other devices.",
+            { description: outcome.reason },
+          );
+        }
+
         await step(setRatio, 0.94, 1, 180);
         if (cancelled) return;
         celebrate();
@@ -113,7 +127,7 @@ function AnalysisPage() {
     return () => {
       cancelled = true;
     };
-  }, [activityId, child.ageBandId, child.id, navigate, saveResult]);
+  }, [activityId, child, navigate, saveResult]);
 
   const doneWeight = ratio * TOTAL_WEIGHT;
   let cursor = 0;

@@ -12,9 +12,16 @@ dist
 dist-ssr
 .output
 .vinxi
-.tanstack/**
+# Anchored to root before the frontend/ move — ** matches at any depth now.
+**/.tanstack/
 .nitro
 *.local
+
+# Python (backend/)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 
 # Wrangler / Cloudflare
 .wrangler/

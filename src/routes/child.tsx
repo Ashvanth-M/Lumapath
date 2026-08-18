@@ -4,9 +4,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ChildGate } from "@/components/common/ChildGate";
 import { AGE_BANDS } from "@/constants";
-import { DEMO_CHILD } from "@/services/mockData";
-import { useAppStore } from "@/store/useAppStore";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { formatAge, formatDate } from "@/utils/age";
 import type { HistoryEntry } from "@/types";
 
@@ -23,7 +23,16 @@ export const Route = createFileRoute("/child")({
 });
 
 function ChildProfilePage() {
-  const child = useAppStore((s) => s.child) ?? DEMO_CHILD;
+  const { child, loading } = useActiveChild();
+
+  if (!child) {
+    return (
+      <AppShell title="Child profile">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
+  }
+
   const band = AGE_BANDS.find((b) => b.id === child.ageBandId)!;
   const initials = child.name
     .split(" ")
@@ -97,18 +106,24 @@ function TimelineCard({
         {icon}
         <h2 className="text-base font-semibold">{title}</h2>
       </div>
-      <ol className="mt-5 space-y-5 border-l border-border pl-5">
-        {entries.map((e) => (
-          <li key={e.id} className="relative">
-            <span className="absolute -left-[26px] top-1 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
-            <p className="text-sm font-medium">{e.title}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{e.detail}</p>
-            <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-              <CalendarDays className="h-3 w-3" /> {formatDate(e.date)}
-            </p>
-          </li>
-        ))}
-      </ol>
+      {entries.length === 0 ? (
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          Nothing recorded yet. Entries appear here as milestones are logged.
+        </p>
+      ) : (
+        <ol className="mt-5 space-y-5 border-l border-border pl-5">
+          {entries.map((e) => (
+            <li key={e.id} className="relative">
+              <span className="absolute -left-[26px] top-1 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
+              <p className="text-sm font-medium">{e.title}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{e.detail}</p>
+              <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <CalendarDays className="h-3 w-3" /> {formatDate(e.date)}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
     </Card>
   );
 }

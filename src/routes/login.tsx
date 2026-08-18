@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { APP_TAGLINE } from "@/constants";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase/client";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -79,6 +80,22 @@ function LoginPage() {
     const { error } = await signInWithGoogle();
     if (error) toast.error(error);
     // Supabase OAuth redirects — navigation handled by redirect URL
+  }
+
+  async function handlePasswordReset() {
+    const email = form.getValues("email").trim();
+    if (!email) {
+      form.setError("email", { message: "Enter your email first, then tap reset." });
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(`If an account exists for ${email}, a reset link is on its way.`);
   }
 
   return (
@@ -166,7 +183,7 @@ function LoginPage() {
                 <div className="flex justify-end">
                   <button
                     type="button"
-                    onClick={() => toast.info("Password reset link sent to your email")}
+                    onClick={() => void handlePasswordReset()}
                     className="text-xs font-medium text-primary hover:underline"
                   >
                     Forgot password?

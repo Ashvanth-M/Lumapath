@@ -40,7 +40,9 @@ function mapResult(row: Tables<"analysis_results">): AssessmentResult {
     aiExplanation: row.ai_explanation ?? "",
     observations: (row.observations as string[]) ?? [],
     riskFactors: (row.risk_factors as string[]) ?? [],
-    analysis: row.analysis_data as AssessmentResult["analysis"],
+    // Stored as jsonb, so the column type is `Json` — no structural overlap
+    // with BehaviourAnalysis, hence the trip through `unknown`.
+    analysis: (row.analysis_data ?? undefined) as unknown as AssessmentResult["analysis"],
     source: (row.source as AssessmentResult["source"]) ?? "video",
   };
 }

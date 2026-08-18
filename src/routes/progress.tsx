@@ -3,9 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Circle, TrendingUp } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { ChildGate } from "@/components/common/ChildGate";
+import { EmptyState } from "@/components/common/EmptyState";
 import { StatCard } from "@/components/common/StatCard";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { getMilestones, getProgressSeries } from "@/services/assessment.service";
 
 const OverallTrendChart = lazy(() =>
@@ -31,23 +34,56 @@ function ChartFallback() {
   return <Skeleton className="h-full w-full rounded-2xl" />;
 }
 
+/** Signed change between the first and latest session, or "Baseline" on session one. */
+function delta(latest: number, first: number): string {
+  const change = latest - first;
+  if (change === 0) return "Baseline session";
+  return `${change > 0 ? "+" : ""}${change}`;
+}
+
 function ProgressPage() {
-  const { data: series } = useQuery({ queryKey: ["progress"], queryFn: getProgressSeries });
-  const { data: milestones } = useQuery({ queryKey: ["milestones"], queryFn: getMilestones });
+  const { child, loading } = useActiveChild();
+  const childId = child?.id ?? "";
+  const { data: series, isLoading } = useQuery({
+    queryKey: ["progress", childId],
+    queryFn: () => getProgressSeries(childId),
+    enabled: !!childId,
+  });
+  const { data: milestones } = useQuery({
+    queryKey: ["milestones", childId],
+    queryFn: () => getMilestones(childId),
+    enabled: !!childId,
+  });
+
+  if (!child) {
+    return (
+      <AppShell title="Progress">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
+  }
 
   const first = series?.[0];
   const last = series?.[series.length - 1];
 
   return (
-    <AppShell title="Progress" subtitle="Six months of screening data, normalised to age expectations.">
-      {!series ? (
+    <AppShell title="Progress" subtitle="Communication scores across every completed screening.">
+      {isLoading || !series ? (
         <Skeleton className="h-80 rounded-3xl" />
+      ) : !first || !last ? (
+        <EmptyState
+          icon={TrendingUp}
+          title="No screenings to chart yet"
+          description="Progress trends appear once at least one screening is complete. Two or more sessions show change over time."
+          actionLabel="Start a screening"
+          actionTo="/screening"
+        />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label="Overall score" value={`${last!.overall}`} hint={`+${last!.overall - first!.overall} since Feb`} icon={TrendingUp} />
-            <StatCard label="Speech" value={`${last!.speech}`} hint={`+${last!.speech - first!.speech}`} icon={TrendingUp} />
-            <StatCard label="Gesture" value={`${last!.gesture}`} hint={`+${last!.gesture - first!.gesture}`} icon={TrendingUp} />
+            <StatCard label="Overall score" value={`${last.overall}`} hint={`${delta(last.overall, first.overall)} since ${first.month}`} icon={TrendingUp} />
+            <StatCard label="Speech" value={`${last.speech}`} hint={delta(last.speech, first.speech)} icon={TrendingUp} />
+            <StatCard label="Gesture" value={`${last.gesture}`} hint={delta(last.gesture, first.gesture)} icon={TrendingUp} />
           </div>
 
           <div>

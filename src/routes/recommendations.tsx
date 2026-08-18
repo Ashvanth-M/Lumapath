@@ -1,13 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { Clock, Gamepad2, HeartHandshake, Lightbulb, MessageSquareText, Repeat, Target } from "lucide-react";
+import { Clock, Gamepad2, HeartHandshake, Lightbulb, MessageSquareText, Repeat, Target, Video } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
+import { ChildGate } from "@/components/common/ChildGate";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { generateRecommendations } from "@/services/ai/recommendationEngine.service";
-import { getGoals } from "@/services/assessment.service";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useActiveChild } from "@/hooks/useActiveChild";
+import {
+  deriveWeeklyGoals,
+  generateRecommendationsFromResult,
+} from "@/services/ai/recommendationEngine.service";
+import { getLatestAssessment } from "@/services/assessment.service";
+import { formatDate } from "@/utils/age";
 import type { Recommendation } from "@/types";
 
 export const Route = createFileRoute("/recommendations")({
@@ -31,28 +39,62 @@ const CATEGORY: Record<Recommendation["category"], { label: string; icon: typeof
 };
 
 function RecommendationsPage() {
-  const { data: recs } = useQuery({
-    queryKey: ["recommendations"],
-    queryFn: () => generateRecommendations("r_003"),
+  const { child, loading } = useActiveChild();
+  const { data: latest, isLoading } = useQuery({
+    queryKey: ["latest-assessment", child?.id],
+    queryFn: () => getLatestAssessment(child?.id ?? ""),
+    enabled: !!child?.id,
   });
-  const { data: goals } = useQuery({ queryKey: ["goals"], queryFn: getGoals });
+
+  if (!child) {
+    return (
+      <AppShell title="Your plan for this week">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <AppShell title="Your plan for this week">
+        <Skeleton className="h-40 rounded-2xl" />
+      </AppShell>
+    );
+  }
+
+  if (!latest) {
+    return (
+      <AppShell title="Your plan for this week">
+        <EmptyState
+          icon={Video}
+          title="Complete a screening to get your plan"
+          description="Recommendations are generated from your child's measured domain scores, so there's nothing to base them on yet."
+          actionLabel="Start a screening"
+          actionTo="/screening"
+        />
+      </AppShell>
+    );
+  }
+
+  const recs = generateRecommendationsFromResult(latest);
+  const goals = deriveWeeklyGoals(latest);
 
   return (
     <AppShell
       title="Your plan for this week"
-      subtitle="Generated from the July screening. Small, repeatable moments matter more than long sessions."
+      subtitle={`Generated from the ${formatDate(latest.completedAt)} screening. Small, repeatable moments matter more than long sessions.`}
     >
       <Card className="rounded-2xl border-border/70 bg-gradient-surface p-6 shadow-soft">
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-primary" />
-          <h2 className="text-base font-semibold">Weekly goals</h2>
+          <h2 className="text-base font-semibold">Focus areas</h2>
         </div>
         <div className="mt-5 grid gap-5 md:grid-cols-3">
           {goals?.map((g) => (
             <div key={g.id}>
               <div className="flex items-baseline justify-between">
                 <p className="text-sm font-medium">{g.title}</p>
-                <span className="text-xs tabular-nums text-muted-foreground">{g.progress}%</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{g.progress}/100</span>
               </div>
               <Progress value={g.progress} className="mt-2.5 h-1.5" />
               <p className="mt-2 text-xs text-muted-foreground">Target: {g.target}</p>

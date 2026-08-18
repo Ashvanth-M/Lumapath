@@ -16,12 +16,13 @@ import {
   Video,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { useAppStore } from "@/store/useAppStore";
-import { DEMO_NOTIFICATIONS } from "@/services/mockData";
+import { useAuth } from "@/hooks/useAuth";
+import { getNotifications } from "@/services/assessment.service";
 
 const NAV = [
   { to: "/dashboard", label: "Home", icon: Home },
@@ -49,8 +50,14 @@ export function AppShell({
   subtitle?: string;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const logout = useAppStore((s) => s.logout);
-  const unread = DEMO_NOTIFICATIONS.filter((n) => !n.read).length;
+  const { user, signOut } = useAuth();
+  // Same query key as the dashboard, so React Query serves both from one fetch.
+  const { data: notifications } = useQuery({
+    queryKey: ["notifications", user?.id],
+    queryFn: () => getNotifications(user?.id ?? ""),
+    enabled: !!user?.id,
+  });
+  const unread = notifications?.filter((n) => !n.read).length ?? 0;
   const [moreOpen, setMoreOpen] = useState(false);
   const moreActive = MORE_NAV.some((i) => i.to === pathname);
 
@@ -86,7 +93,13 @@ export function AppShell({
                 )}
               </Link>
             </Button>
-            <Button variant="ghost" size="icon" aria-label="Sign out" asChild onClick={logout}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Sign out"
+              asChild
+              onClick={() => void signOut()}
+            >
               <Link to="/login">
                 <LogOut className="h-5 w-5" />
               </Link>

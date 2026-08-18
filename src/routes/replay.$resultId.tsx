@@ -26,6 +26,7 @@ import { getStandardActivity, SCREENING_DISCLAIMER } from "@/constants/screening
 import { derivedSamples, EMPTY_SAMPLE, pct } from "@/lib/replaySignals";
 import { getVideoForResult, restoreSessionForResult } from "@/lib/videoSession";
 import { getAssessment } from "@/services/assessment.service";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { useAppStore } from "@/store/useAppStore";
 import type { BehaviourSample, ScoreKey } from "@/types";
 import { formatAge } from "@/utils/age";
@@ -55,7 +56,7 @@ export const Route = createFileRoute("/replay/$resultId")({
 function ReplayPage() {
   const { resultId } = Route.useParams();
   const saved = useAppStore((s) => s.savedResults.find((r) => r.id === resultId));
-  const child = useAppStore((s) => s.child);
+  const { child } = useActiveChild();
   const { data: fetched } = useQuery({
     queryKey: ["assessment", resultId],
     queryFn: () => getAssessment(resultId),

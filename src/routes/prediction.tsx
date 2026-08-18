@@ -1,129 +1,195 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { BrainCircuit, TrendingUp, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { BrainCircuit, Info, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Slider } from "@/components/ui/slider";
-import { DEMO_CHILD } from "@/services/mockData";
-import { useAppStore } from "@/store/useAppStore";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChildGate } from "@/components/common/ChildGate";
+import { EmptyState } from "@/components/common/EmptyState";
+import { useActiveChild } from "@/hooks/useActiveChild";
+import { listAssessments } from "@/services/assessment.service";
+import { formatDate } from "@/utils/age";
+import { SCORE_LABELS } from "@/constants";
+import type { ScoreKey } from "@/types";
 
 export const Route = createFileRoute("/prediction")({
   head: () => ({
     meta: [
-      { title: "AI prediction — LumaPath AI" },
+      { title: "Score trend — LumaPath AI" },
       {
         name: "description",
         content:
-          "Forecast your child's communication trajectory over the next 6 months and see how practice frequency changes it.",
+          "How your child's measured communication scores have changed across completed screenings.",
       },
-      { property: "og:title", content: "AI prediction — LumaPath AI" },
-      { property: "og:description", content: "Six-month communication trajectory forecasting." },
+      { property: "og:title", content: "Score trend — LumaPath AI" },
+      { property: "og:description", content: "Measured change across completed screenings." },
     ],
   }),
-  component: PredictionPage,
+  component: TrendPage,
 });
 
-function PredictionPage() {
-  const child = useAppStore((s) => s.child) ?? DEMO_CHILD;
-  const [sessions, setSessions] = useState(3);
+const SCORE_KEYS: ScoreKey[] = [
+  "eyeContact",
+  "speech",
+  "gesture",
+  "attention",
+  "facialExpression",
+  "auditoryResponse",
+];
 
-  const base = 77;
-  const projected = Math.min(97, Math.round(base + sessions * 3.1));
-  const points = Array.from({ length: 7 }, (_, i) => Math.round(base + ((projected - base) * i) / 6));
-  const risk = projected > 88 ? "low" : projected > 80 ? "moderate" : "watch";
+function TrendPage() {
+  const { child, loading } = useActiveChild();
+  const { data: history, isLoading } = useQuery({
+    queryKey: ["assessments", child?.id],
+    queryFn: () => listAssessments(child?.id ?? ""),
+    enabled: !!child?.id,
+  });
+
+  if (!child) {
+    return (
+      <AppShell title="Score trend">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <AppShell title="Score trend">
+        <Skeleton className="h-80 rounded-3xl" />
+      </AppShell>
+    );
+  }
+
+  const sessions = [...(history ?? [])].sort((a, b) =>
+    a.completedAt.localeCompare(b.completedAt),
+  );
+
+  if (sessions.length === 0) {
+    return (
+      <AppShell title="Score trend">
+        <EmptyState
+          icon={Video}
+          title="No sessions to compare yet"
+          description={`Trends are measured from ${child.name}'s completed screenings. Complete the first one to establish a baseline.`}
+          actionLabel="Start a screening"
+          actionTo="/screening"
+        />
+      </AppShell>
+    );
+  }
+
+  const first = sessions[0];
+  const latest = sessions[sessions.length - 1];
+  const overallChange = latest.overallScore - first.overallScore;
+  const max = Math.max(...sessions.map((s) => s.overallScore), 100);
 
   return (
     <AppShell
-      title="AI prediction"
-      subtitle={`Modelled six-month trajectory for ${child.name}, updated from every completed session.`}
+      title="Score trend"
+      subtitle={`${sessions.length} completed ${
+        sessions.length === 1 ? "screening" : "screenings"
+      } for ${child.name}, from ${formatDate(first.completedAt)} to ${formatDate(latest.completedAt)}.`}
     >
       <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
         <Card className="gap-0 rounded-3xl border-border/70 p-6 shadow-lift">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight">
-              <BrainCircuit className="h-4 w-4 text-primary" /> Projected communication index
+              <BrainCircuit className="h-4 w-4 text-primary" /> Overall communication score
             </h2>
-            <Badge
-              className={`rounded-full ${
-                risk === "low"
-                  ? "bg-success/15 text-success hover:bg-success/15"
-                  : risk === "moderate"
-                    ? "bg-accent/15 text-accent hover:bg-accent/15"
-                    : "bg-destructive/10 text-destructive hover:bg-destructive/10"
-              }`}
-            >
-              {risk === "low" ? "On track" : risk === "moderate" ? "Monitor" : "Needs support"}
-            </Badge>
+            {sessions.length > 1 && (
+              <Badge
+                className={`rounded-full ${
+                  overallChange > 0
+                    ? "bg-success/15 text-success hover:bg-success/15"
+                    : overallChange < 0
+                      ? "bg-destructive/10 text-destructive hover:bg-destructive/10"
+                      : "bg-secondary text-secondary-foreground hover:bg-secondary"
+                }`}
+              >
+                {overallChange > 0 ? "+" : ""}
+                {overallChange} since first session
+              </Badge>
+            )}
           </div>
 
           <div className="mt-6 flex h-48 items-end gap-2">
-            {points.map((p, i) => (
+            {sessions.map((s, i) => (
               <motion.div
-                key={i}
+                key={s.id}
                 className="flex-1 rounded-t-xl bg-gradient-primary"
+                style={{ minWidth: 12 }}
                 initial={{ height: 0 }}
-                animate={{ height: `${p}%` }}
+                animate={{ height: `${(s.overallScore / max) * 100}%` }}
                 transition={{ duration: 0.6, delay: i * 0.05, ease: [0.22, 1, 0.36, 1] }}
+                title={`${s.overallScore}/100 · ${formatDate(s.completedAt)}`}
               />
             ))}
           </div>
           <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
-            {["Now", "M1", "M2", "M3", "M4", "M5", "M6"].map((m) => (
-              <span key={m}>{m}</span>
-            ))}
+            <span>{formatDate(first.completedAt)}</span>
+            {sessions.length > 1 && <span>{formatDate(latest.completedAt)}</span>}
           </div>
 
-          <div className="mt-7 rounded-2xl bg-gradient-surface p-5">
-            <div className="flex items-center justify-between text-sm font-medium">
-              <span>Guided sessions per week</span>
-              <span className="tabular-nums text-primary">{sessions}</span>
-            </div>
-            <Slider
-              value={[sessions]}
-              min={1}
-              max={6}
-              step={1}
-              onValueChange={(v) => setSessions(v[0])}
-              className="mt-4"
-            />
-            <p className="mt-3 text-xs text-muted-foreground">
-              At {sessions} sessions per week the model projects an index of{" "}
-              <strong className="text-foreground tabular-nums">{projected}</strong> in six months.
+          <div className="mt-7 flex items-start gap-3 rounded-2xl border border-border/70 bg-secondary/40 p-5">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              These are measured scores, not a forecast. LumaPath does not project future
+              development — doing so responsibly needs a model validated against clinical outcomes,
+              which this tool does not have. Repeat screenings under similar conditions to see real
+              change.
             </p>
           </div>
         </Card>
 
         <div className="space-y-4">
-          {[
-            {
-              icon: TrendingUp,
-              title: "Strongest predicted gain",
-              body: "Gesture-to-word transition improves fastest with pointing and naming repetition.",
-            },
-            {
-              icon: TriangleAlert,
-              title: "Watch signal",
-              body: "Response latency above 1.4 s in noisy rooms — quieter sessions raise measurement quality.",
-            },
-          ].map((c) => (
-            <Card key={c.title} className="gap-0 rounded-3xl border-border/70 p-6 shadow-soft">
-              <c.icon className="h-5 w-5 text-primary" />
-              <h3 className="mt-3 text-sm font-semibold tracking-tight">{c.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{c.body}</p>
-            </Card>
-          ))}
+          <Card className="gap-0 rounded-3xl border-border/70 p-6 shadow-soft">
+            <h3 className="text-sm font-semibold tracking-tight">Change by domain</h3>
+            {sessions.length < 2 ? (
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                One session recorded so far — this is {child.name}&apos;s baseline. Complete a second
+                screening to see which domains are moving.
+              </p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {SCORE_KEYS.map((key) => {
+                  const change = latest.scores[key] - first.scores[key];
+                  const Icon = change < 0 ? TrendingDown : TrendingUp;
+                  return (
+                    <li key={key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate">{SCORE_LABELS[key]}</span>
+                      <span
+                        className={`inline-flex shrink-0 items-center gap-1.5 tabular-nums ${
+                          change > 0
+                            ? "text-success"
+                            : change < 0
+                              ? "text-destructive"
+                              : "text-muted-foreground"
+                        }`}
+                      >
+                        {change !== 0 && <Icon className="h-3.5 w-3.5" />}
+                        {change > 0 ? "+" : ""}
+                        {change}
+                        <span className="text-muted-foreground">({latest.scores[key]})</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
 
           <Card className="gap-0 rounded-3xl border-border/70 p-6 shadow-soft">
-            <h3 className="text-sm font-semibold tracking-tight">Confidence</h3>
-            <div className="mt-3 flex items-center gap-3">
-              <Progress value={71} className="h-2" />
-              <span className="text-sm font-semibold tabular-nums">71%</span>
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Confidence rises as more sessions are recorded. Screening support only — not a diagnosis.
+            <h3 className="text-sm font-semibold tracking-tight">Measurement confidence</h3>
+            <p className="mt-3 text-2xl font-semibold tabular-nums">
+              {Math.round(latest.confidence * 100)}%
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Reported by the analysis engine for the {formatDate(latest.completedAt)} session. It
+              reflects recording quality and how much of the clip was measurable — not diagnostic
+              certainty.
             </p>
           </Card>
         </div>

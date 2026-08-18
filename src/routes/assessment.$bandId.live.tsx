@@ -28,6 +28,9 @@ import { ACTIVITIES_BY_BAND, AGE_BANDS } from "@/constants";
 import { SCREENING_DISCLAIMER } from "@/constants/screening";
 import { celebrate } from "@/lib/celebrate";
 import { cancelVoice, isVoiceSupported, setVoiceEnabled, speak } from "@/lib/voice";
+import { useActiveChild } from "@/hooks/useActiveChild";
+import { buildResultFromLiveSession } from "@/services/ai/liveResult.service";
+import { persistResult } from "@/services/resultPersistence.service";
 import {
   activeAdapters,
   EMPTY_METRICS,
@@ -75,6 +78,10 @@ function LiveSession() {
     [bandId],
   );
   const advanceDraft = useAppStore((s) => s.advanceDraft);
+  const saveResult = useAppStore((s) => s.saveResult);
+  // Named `activeChild`, not `child` — `child` already means "the detected
+  // child in the current frame" further down this file.
+  const { child: activeChild } = useActiveChild();
 
   const [phase, setPhase] = useState<Phase>("ready");
   const [countdown, setCountdown] = useState(3);
@@ -390,9 +397,30 @@ function LiveSession() {
                     <Button
                       size="lg"
                       className="rounded-full px-7"
-                      onClick={() => navigate({ to: "/assessment/$bandId/upload", params: { bandId } })}
+                      disabled={!activeChild}
+                      onClick={() => {
+                        if (!activeChild) return;
+                        const result = buildResultFromLiveSession({
+                          metrics,
+                          quality,
+                          events,
+                          ageBandId: bandId as AgeBandId,
+                          childId: activeChild.id,
+                          durationSec: activities.reduce((a, x) => a + x.seconds, 0),
+                        });
+                        saveResult(result);
+                        void persistResult(result).then((outcome) => {
+                          if (!outcome.persisted) {
+                            toast.warning("Saved on this device only.", {
+                              description: outcome.reason,
+                            });
+                          }
+                        });
+                        void celebrate();
+                        navigate({ to: "/results/$resultId", params: { resultId: result.id } });
+                      }}
                     >
-                      <Sparkles className="h-4 w-4" /> Send for full AI analysis
+                      <Sparkles className="h-4 w-4" /> Save session result
                     </Button>
                   </>
                 )}

@@ -3,7 +3,8 @@
  *
  * Each recommendation includes the reason it was generated.
  */
-import type { AssessmentResult, Recommendation } from "@/types";
+import { SCORE_LABELS } from "@/constants";
+import type { AssessmentResult, Recommendation, ScoreKey, WeeklyGoal } from "@/types";
 
 /**
  * Generates recommendations based on actual domain scores from an assessment.
@@ -148,4 +149,27 @@ export function generateRecommendationsFromResult(result: AssessmentResult): Rec
   }
 
   return recs;
+}
+
+/**
+ * Derives this week's focus areas from the three weakest domains in a result.
+ *
+ * `progress` is the domain's measured score, not an invented completion
+ * percentage — the bar shows where the child currently stands, and the target
+ * is the next step to aim for at the following screening.
+ */
+export function deriveWeeklyGoals(result: AssessmentResult): WeeklyGoal[] {
+  const keys = Object.keys(result.scores) as ScoreKey[];
+  return keys
+    .sort((a, b) => result.scores[a] - result.scores[b])
+    .slice(0, 3)
+    .map((key) => {
+      const score = result.scores[key];
+      return {
+        id: `goal-${key}-${result.id}`,
+        title: SCORE_LABELS[key],
+        progress: score,
+        target: `Reach ${Math.min(90, score + 10)} at the next screening`,
+      };
+    });
 }

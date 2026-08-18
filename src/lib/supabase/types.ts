@@ -19,7 +19,11 @@ export type Gender = "male" | "female" | "other";
 export type EventSeverity = "info" | "notable" | "concern";
 export type RecommendationPriority = "low" | "medium" | "high";
 
-export interface Database {
+/**
+ * Table shapes, written by hand to match supabase/migrations/001_schema.sql.
+ * Wrapped by `Database` below — don't reference this directly.
+ */
+interface DatabaseSchema {
   public: {
     Tables: {
       profiles: {
@@ -192,7 +196,8 @@ export interface Database {
       analysis_results: {
         Row: {
           id: string;
-          video_id: string;
+          /** Null for manual and live results, which have no recording. */
+          video_id: string | null;
           assessment_id: string;
           child_id: string;
           age_band: AgeBandId;
@@ -216,11 +221,13 @@ export interface Database {
           risk_factors: Json | null;
           analysis_data: Json | null;
           source: string | null;
+          thumbnail_paths: Json | null;
+          activity_id: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
-          video_id: string;
+          video_id?: string | null;
           assessment_id: string;
           child_id: string;
           age_band: AgeBandId;
@@ -244,6 +251,8 @@ export interface Database {
           risk_factors?: Json | null;
           analysis_data?: Json | null;
           source?: string | null;
+          thumbnail_paths?: Json | null;
+          activity_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -472,6 +481,29 @@ export interface Database {
         };
       };
     };
+  };
+}
+
+/**
+ * supabase-js requires a `Relationships` tuple on every table before it will
+ * accept the schema as a `GenericSchema`. Without it the client silently
+ * degrades and resolves every insert/update payload — and every select result —
+ * to `never`, which is what broke the whole service layer.
+ *
+ * Adding it here rather than on all thirteen tables keeps the definitions above
+ * readable and makes it impossible to forget on a new table. Foreign keys are
+ * enforced by Postgres; this tuple only feeds supabase-js's join inference,
+ * which nothing in the app uses.
+ */
+type WithRelationships<T> = { [K in keyof T]: T[K] & { Relationships: [] } };
+
+export interface Database {
+  public: {
+    Tables: WithRelationships<DatabaseSchema["public"]["Tables"]>;
+    Views: { [_ in never]: never };
+    Functions: { [_ in never]: never };
+    Enums: { [_ in never]: never };
+    CompositeTypes: { [_ in never]: never };
   };
 }
 

@@ -8,7 +8,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { DEMO_CHILD } from "@/services/mockData";
+import { ChildGate } from "@/components/common/ChildGate";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { useAppStore } from "@/store/useAppStore";
 import { ageInMonths } from "@/utils/age";
 
@@ -42,7 +43,7 @@ const SUGGESTIONS = [
 ];
 
 function AssistantPage() {
-  const child = useAppStore((s) => s.child) ?? DEMO_CHILD;
+  const { child, loading } = useActiveChild();
   const savedResults = useAppStore((s) => s.savedResults);
 
   // Clinical grounding: child profile + latest sessions, child-only metrics.
@@ -66,15 +67,17 @@ function AssistantPage() {
       }));
     return {
       primarySubject: "child",
-      child: {
-        name: child.name,
-        ageMonths: ageInMonths(child.birthDate),
-        ageBandId: child.ageBandId,
-        gender: child.gender,
-        medicalNotes: child.medicalNotes ?? null,
-        developmentHistory: child.developmentHistory?.slice(0, 6),
-        communicationHistory: child.communicationHistory?.slice(0, 6),
-      },
+      child: child
+        ? {
+            name: child.name,
+            ageMonths: ageInMonths(child.birthDate),
+            ageBandId: child.ageBandId,
+            gender: child.gender,
+            medicalNotes: child.medicalNotes ?? null,
+            developmentHistory: child.developmentHistory.slice(0, 6),
+            communicationHistory: child.communicationHistory.slice(0, 6),
+          }
+        : null,
       sessions: recent,
       sessionCount: savedResults.length,
     };
@@ -107,6 +110,14 @@ function AssistantPage() {
     if (!value || busy) return;
     setInput("");
     void sendMessage({ text: value });
+  }
+
+  if (!child) {
+    return (
+      <AppShell title="AI clinical copilot">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
   }
 
   return (

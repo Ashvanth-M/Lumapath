@@ -28,7 +28,7 @@ import {
   STANDARD_ACTIVITIES,
   WHY_LUMAPATH,
 } from "@/constants/screening";
-import { useAppStore } from "@/store/useAppStore";
+import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -68,7 +68,8 @@ const OUTCOMES = [
 ];
 
 function Landing() {
-  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const { user } = useAuth();
+  const isAuthenticated = !!user;
   const primaryTo = isAuthenticated ? "/dashboard" : "/login";
 
   return (

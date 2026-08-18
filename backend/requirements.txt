@@ -1,0 +1,24 @@
+# LumaPath AI — backend service
+# Python 3.11+
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-multipart==0.0.20
+
+# Supabase access (service role — bypasses RLS, see app/services/persistence.py)
+supabase==2.11.0
+
+# Supabase JWT verification
+pyjwt[crypto]==2.10.1
+
+# ---------------------------------------------------------------------------
+# ML dependencies — uncomment as each model lands. Kept out of the base install
+# so the API can run on a small instance until inference is actually wired up.
+# ---------------------------------------------------------------------------
+# mediapipe==0.10.20
+# onnxruntime==1.20.1
+# opencv-python-headless==4.10.0.84
+# numpy==2.2.1
+# openai-whisper==20240930

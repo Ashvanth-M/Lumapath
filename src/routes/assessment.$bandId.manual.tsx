@@ -9,8 +9,11 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { AGE_BANDS } from "@/constants";
 import { ANSWER_OPTIONS, MANUAL_QUESTIONS_BY_BAND, type AnswerValue } from "@/constants/manualQuestions";
+import { ChildGate } from "@/components/common/ChildGate";
 import { celebrate } from "@/lib/celebrate";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { scoreManualAssessment } from "@/services/manualScoring.service";
+import { persistResult } from "@/services/resultPersistence.service";
 import { useAppStore } from "@/store/useAppStore";
 import type { AgeBandId } from "@/types";
 
@@ -38,7 +41,7 @@ function ManualAssessment() {
     () => MANUAL_QUESTIONS_BY_BAND[bandId as AgeBandId] ?? MANUAL_QUESTIONS_BY_BAND["1-2y"],
     [bandId],
   );
-  const child = useAppStore((s) => s.child);
+  const { child, loading } = useActiveChild();
   const saveResult = useAppStore((s) => s.saveResult);
 
   const [index, setIndex] = useState(0);
@@ -60,14 +63,29 @@ function ManualAssessment() {
       toast.error("Please answer every question before submitting.");
       return;
     }
+    if (!child) return;
     setSubmitting(true);
-    const result = scoreManualAssessment(bandId as AgeBandId, answers, child?.id ?? "c_1");
+    const result = scoreManualAssessment(bandId as AgeBandId, answers, child.id);
     saveResult(result);
+
+    const outcome = await persistResult(result);
+    if (outcome.persisted) {
+      toast.success("Questionnaire analysed — opening your report");
+    } else {
+      toast.warning("Saved on this device only.", { description: outcome.reason });
+    }
+
     void celebrate();
-    toast.success("Questionnaire analysed — opening your report");
-    await new Promise((r) => setTimeout(r, 500));
     navigate({ to: "/results/$resultId", params: { resultId: result.id } });
   };
+
+  if (!child) {
+    return (
+      <AppShell title="Manual questionnaire">
+        <ChildGate loading={loading} />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell

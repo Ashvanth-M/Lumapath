@@ -1,11 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { motion } from "motion/react";
-import { Globe2, Users } from "lucide-react";
+import { Info, Users } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { DEMO_CHILD } from "@/services/mockData";
-import { useAppStore } from "@/store/useAppStore";
+import { EmptyState } from "@/components/common/EmptyState";
 
 export const Route = createFileRoute("/community")({
   head: () => ({
@@ -13,7 +10,8 @@ export const Route = createFileRoute("/community")({
       { title: "Community benchmarks — LumaPath AI" },
       {
         name: "description",
-        content: "See how your child's anonymised communication scores compare with peers in the same age band.",
+        content:
+          "Anonymised peer comparison by age band. Not yet available — it requires aggregated data across families.",
       },
       { property: "og:title", content: "Community benchmarks — LumaPath AI" },
       { property: "og:description", content: "Anonymised peer benchmarks by age band." },
@@ -22,63 +20,35 @@ export const Route = createFileRoute("/community")({
   component: CommunityPage,
 });
 
-const BENCH = [
-  { label: "Eye contact", you: 82, peers: 74 },
-  { label: "Speech & vocalisation", you: 68, peers: 71 },
-  { label: "Gesture", you: 84, peers: 70 },
-  { label: "Auditory response", you: 74, peers: 72 },
-  { label: "Attention", you: 76, peers: 69 },
-];
-
 function CommunityPage() {
-  const child = useAppStore((s) => s.child) ?? DEMO_CHILD;
-
   return (
     <AppShell
       title="Community benchmarks"
-      subtitle="Anonymised, aggregated comparisons with families screening in the same age band."
+      subtitle="Anonymised comparison with other families screening in the same age band."
     >
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          { icon: Users, label: "Families in this band", value: "12,480" },
-          { icon: Globe2, label: "Countries contributing", value: "34" },
-          { icon: Users, label: `${child.name}'s percentile`, value: "68th" },
-        ].map((s) => (
-          <Card key={s.label} className="gap-0 rounded-2xl border-border/70 p-5 shadow-soft">
-            <s.icon className="h-5 w-5 text-primary" />
-            <p className="mt-3 text-2xl font-semibold tabular-nums">{s.value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
-          </Card>
-        ))}
-      </div>
+      <EmptyState
+        icon={Users}
+        title="Not available yet"
+        description="Peer benchmarks need anonymised results aggregated across many families in the same age band. There isn't enough data to produce an honest comparison, so nothing is shown here rather than a placeholder figure."
+        actionLabel="Back to your progress"
+        actionTo="/progress"
+      />
 
-      <Card className="mt-4 gap-0 rounded-3xl border-border/70 p-6 shadow-soft">
-        <h2 className="text-sm font-semibold tracking-tight">Domain comparison</h2>
-        <ul className="mt-5 space-y-5">
-          {BENCH.map((b, i) => (
-            <li key={b.label}>
-              <div className="mb-2 flex items-center justify-between text-sm">
-                <span className="font-medium">{b.label}</span>
-                <span className="text-xs text-muted-foreground">
-                  You <strong className="text-foreground tabular-nums">{b.you}</strong> · peers{" "}
-                  <span className="tabular-nums">{b.peers}</span>
-                </span>
-              </div>
-              <motion.div
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="space-y-1.5"
-              >
-                <Progress value={b.you} className="h-2" />
-                <Progress value={b.peers} className="h-1 opacity-45" />
-              </motion.div>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-6 text-xs text-muted-foreground">
-          Benchmarks are aggregated and de-identified. They describe variation across families, not clinical norms.
-        </p>
+      <Card className="mt-6 flex-row items-start gap-3 rounded-2xl border-border/70 p-5">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 text-sm leading-relaxed text-muted-foreground">
+          <p className="font-medium text-foreground">What this page will show</p>
+          <p className="mt-1.5">
+            Once enough screenings exist, this will compare each domain score against the
+            distribution for the same age band — with an explicit sample size, so you can judge how
+            much weight it deserves.
+          </p>
+          <p className="mt-3">
+            Percentiles describe variation between families, not clinical norms. A low percentile is
+            not a diagnosis, and a high one does not rule out a concern worth raising with a
+            clinician.
+          </p>
+        </div>
       </Card>
     </AppShell>
   );

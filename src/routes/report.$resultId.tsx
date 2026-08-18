@@ -12,6 +12,7 @@ import { SCORE_LABELS } from "@/constants";
 import { getAssessment } from "@/services/assessment.service";
 import { generateClinicianReport } from "@/services/ai/reportGenerator.service";
 import { formatDate, formatLatency } from "@/utils/age";
+import { useActiveChild } from "@/hooks/useActiveChild";
 import { useAppStore } from "@/store/useAppStore";
 import type { ScoreKey } from "@/types";
 
@@ -29,7 +30,7 @@ export const Route = createFileRoute("/report/$resultId")({
 
 function ReportPage() {
   const { resultId } = Route.useParams();
-  const child = useAppStore((s) => s.child);
+  const { child } = useActiveChild();
   const saved = useAppStore((s) => s.savedResults.find((r) => r.id === resultId));
   const { data: fetched } = useQuery({
     queryKey: ["assessment", resultId],
